@@ -1,0 +1,48 @@
+---
+title: 'STAT 542 / CS 598: Homework 4'
+author: "Fall 2019, by Paul Nel (paulnel2)"
+date: 'Due: Monday, Oct 14 by 11:59 PM Pacific Time'
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '50%', fig.align = "center")
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+
+
+
+## Question 1 [70 Points] Tuning Random Forests in Virtual Twins
+
+```{r}
+read.csv('Spesis.csv')
+
+```
+
+## Question 2 [30 Points] Second Step in Virtual Twins
+
+The second step in a virtual twins model is to use a single tree model (CART) to describe the choice of the best treatment. Perform the following:
+* Based on your optimal tuning parameter, fit the Virtual Twins model described in Question 1. Again, you should not use the `BEST` variable. 
+* For each subject, obtain the predicted best treatment of the training data itself
+* Treating the label of best treatment as the outcome, and fit a single tree model to predict it. Be careful which variables should be removed from this model fitting.
+* Consider tuning the tree model using the cost-complexity tuning.
