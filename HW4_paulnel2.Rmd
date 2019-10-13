@@ -40,22 +40,24 @@ background-color: #e6ffe6;
 ### Set up of data sets
 
 ```{r message=FALSE, warning=FALSE}
-set.seed(101)
+set.seed(11)
 require(randomForest)
 mydata = read.csv('Sepsis.csv')
 n = nrow(mydata)
 train.id = sample(1:n, round(n*0.75,0))
-train.data = mydata[train.id,-15]
-test.data = mydata[-train.id,-15]
+train.data = mydata[train.id,c(-1,-15)]
+test.data = mydata[-train.id,c(-1,-15)]
 ```
+I have removed the first predictor, `X`, which appears to be only an index as well as the last, `BEST` from the training and test sets.
 
 ### Prediction and comparison functions
 
 ```{r}
 
 get_prediction <- function(therapy, mtry, nodesize){
-  model.data = train.data[train.data[,"THERAPY"] == therapy,]
-  rforest = randomForest(model.data$Health ~ .-THERAPY , data=model.data, mtry=mtry, nodesize=nodesize)
+  model.data = train.data[train.data[,"THERAPY"] == therapy,][,-2]
+  rforest = randomForest(model.data$Health ~ ., data=model.data, mtry=mtry, 
+                         nodesize=nodesize)
   return (predict(rforest, test.data[,-2]))
 }
 
@@ -73,17 +75,16 @@ get_accuracy <- function(prediction, truth) {
 ### Iteration loop
 
 ```{r}
-reps = 5
-mtries = c(2,5,12)
+reps = 100
+mtries = c(2,5,11)
 nodesizes = c(1,20,100)
 zeros = rep(0, length(mtries)*length(nodesizes)*reps)
-accuracies.tot =array(zeros, dim=c(reps,length(mtries),length(nodesizes)))
+accuracies =array(zeros, dim=c(reps,length(mtries),length(nodesizes)))
 for (i in 1:reps){
-  accuracies = matrix(rep(0, length(mtries)*length(nodesizes)),ncol=length(mtries))
   for (j in 1:length(mtries)){
     for (k in 1:length(nodesizes)){
       prediction = get_treatment(mtry=mtries[j], nodesize=nodesizes[k])
-      accuracies.tot[i,k,j] = get_accuracy(prediction, mydata[-train.id, "BEST"])
+      accuracies[i,k,j] = get_accuracy(prediction, mydata[-train.id, "BEST"])
     }
   }
 }
@@ -92,55 +93,92 @@ for (i in 1:reps){
 This leads to the following results with rows representing different `nodesize` and the coloumns different `mtry` values.
 ```{r echo=FALSE}
 require(knitr)
-report = data.frame(apply(accuracies.tot, c(2,3), mean), row.names = nodesizes)
+report = data.frame(apply(accuracies, c(2,3), mean), row.names = nodesizes)
 colnames(report) = mtries
 kable(report, caption="Model performance for combinations of mtry and nodesize", format.args=list(justify='centre'))
 par(mfrow=c(1,3))
 for (i in 1:length(mtries)){
-    boxplot(accuracies.tot[,i,], col = c("lightskyblue3", "gray78", "gold1"),xaxt='n', xlab='mtry', main=paste("nodesize:", nodesizes[i]))
+    boxplot(accuracies[,i,], col = c("lightskyblue3", "gray78", "gold1"),xaxt='n', xlab='mtry', main=paste("nodesize:", nodesizes[i]))
     axis(side=1,at=seq(1:3),labels=mtries)
 }
 ```
 
 ### Intuition
 
-Normally when one has highly correlated data, it helps to reduce the number of predictors (`mtry`) available for selection at each split.  When all predictors are used (12 in this case if we ignore `THERAPY`) this process is similar to simple bagging.  The result of the above analysis would suggest that the predictors are largely uncorrelated since the accuracy improves as we allow more predictors into the selection at each split, up to 12.
+Normally when one has highly correlated data, it helps to reduce the number of predictors (`mtry`) available for selection at each split.  When all predictors are used (11 in this case if we ignore `THERAPY`) this process is similar to simple bagging.  The result of the above analysis would suggest that the predictors are largely uncorrelated since the accuracy improves from 2 to 5 for all values for `nodesize` and also from 5 to 11 for `nodesize=100`.
 
-The parameter `nodesize` determines the minimum size of nodes, in other words it determines the depth of each tree.  For small values we can expect very deep trees.  In this example I vary this from a minimum of `` `r min(nodesizes)` `` (largest possible tree) to `` `r max(nodesizes)` ``.  This parameter has a significant impact for larger values of `mtry` suggesting that smaller trees results in better performance on the test set.
-
-The paramters chosen will be `mtry = 12` and `nodesize = 100` 
+The parameter `nodesize` determines the minimum size of nodes, in other words it determines the depth of each tree.  For small values we can expect very deep trees.  In this example I vary this from a minimum of `` `r min(nodesizes)` `` (largest possible tree) to `` `r max(nodesizes)` ``.  This model also seems to be very sensitive to changes in , `mtry` with a maximum accuracy achieved for  `mtry = 11` and `nodesize = 100`, which will be considered the optimal values. 
 
 ## Question 2 [30 Points] Second Step in Virtual Twins
 
 Generate predictions on all data based on the best parameters from Question 1.
 
+Helper function to choose treatment
 ```{r}
-all_data = mydata[,-15]
-
-get_all_prediction <- function(therapy, mtry, nodesize){
-  model.data = all_data[all_data[,"THERAPY"] == therapy,]
-  rforest = randomForest(model.data$Health ~ .-THERAPY , data=model.data, mtry=mtry, nodesize=nodesize)
-  return (predict(rforest, all_data[,-2]))
-}
-
-get_all_treatment <- function(mtry, nodesize){
-  pred.0 = get_all_prediction(0, mtry, nodesize)
-  pred.1 = get_all_prediction(1, mtry, nodesize)
+choose_treatment <- function(pred.1, pred.0){
   return (ifelse(pred.1>pred.0, 1,0))
 }
+```
 
-all_data['PRED'] = get_all_treatment(mtry=12, nodesize=100)
-
+```{r}
+set.seed(124)
+all_data = mydata[,c(-1,-15)]
+model.data.0 = all_data[all_data[,"THERAPY"] == 0,][,c(-2,-14)]
+model.data.1 = all_data[all_data[,"THERAPY"] == 1,][,c(-2,-14)]
+rforest.0 = randomForest(model.data.0$Health ~ ., data=model.data.0, mtry=11, nodesize=100)
+rforest.1 = randomForest(model.data.1$Health ~ ., data=model.data.1, mtry=11, nodesize=100)
+pred.0 = predict(rforest.0, all_data)
+pred.1 = predict(rforest.1, all_data)
+all_data['PRED'] = choose_treatment(pred.1, pred.0)
+#mean(all_data$PRED==mydata$BEST)
 ```
 
 Build a single regression tree using the predicted values `all_data['PRED]` as the proposed treatment.
 
 ```{r}
+par(mfrow=c(1,2))
 require(rpart)
 require(rpart.plot)
-train.all_data = all_data[,-c(2,3)]
+train.all_data = all_data[,c(-1,-2)]
 rtree = rpart(train.all_data$PRED~., data=train.all_data)
 par(mfrow=c(1,1))
 rpart.plot(rtree)
-
+plotcp(rtree)
 ```
+This gives us a tree with the following CP values:
+
+```{r echo=FALSE}
+printcp(rtree)
+```
+
+To prune the tree, we find the amount of splits that minimise the cross validation error `xerror` as follows:
+```{r}
+opt = which.min(rtree$cptable[, "xerror"])
+rtree$cptable[opt, 4]
+```
+Now find the upper limit based on 1 standard deviation and list all splits that have `xerror` less than this.
+```{r}
+upper_1se = rtree$cptable[opt, 4] + rtree$cptable[opt, 5]
+```
+and using this limit of `` `r round(upper_1se,3) ` `` we find all the splits that produce similar or lower `xerror`.
+```{r}
+tmp.id = which(rtree$cptable[, 4] <= upper_1se)
+```
+giving us `` `r tmp.id ` ``.
+
+
+Compute an average `CP` value between the two splits with the lowest resulting `xerror` of `` `r round(upper_1se, 3)` `` which should fall between rows `` `r min(tmp.id[1])-1` `` and `` `r min(tmp.id[1])` ``:
+```{r}
+CP.1se = 0.5*(rtree$cptable[min(tmp.id[1]),1] + rtree$cptable[min(tmp.id[1])-1,1])
+final.rtree = prune(rtree, cp=CP.1se)
+```
+
+which gives the following tree based on this $CP_{1se}$ of `` `r round(CP.1se,3)` ``.
+```{r}
+par(mfrow=c(1,1))
+rpart.plot(final.rtree)
+pred.tree = ifelse(predict(final.rtree, all_data)>0.5,1,0)
+accuracy = mean(pred.tree==mydata[,"BEST"])
+```
+
+This tree gives us an accuracy of `` `r round(accuracy, 3) ` `` which is comparable to that achieved in Question 1.
