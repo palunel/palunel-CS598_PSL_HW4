@@ -20,7 +20,7 @@ editor_options:
   knitr::opts_chunk$set(echo = TRUE)
   knitr::opts_chunk$set(message = FALSE)
   knitr::opts_chunk$set(warning = FALSE)
-  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '50%', fig.align = "center")
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '60%', fig.align = "center")
   options(width = 90)
 ```
 
@@ -34,10 +34,72 @@ background-color: #e6ffe6;
 
 ## Question 1 [70 Points] Tuning Random Forests in Virtual Twins
 
-```{r}
-read.csv('Spesis.csv')
+### Set up of data sets
 
+```{r message=FALSE, warning=FALSE}
+set.seed(101)
+require(randomForest)
+mydata = read.csv('Sepsis.csv')
+n = nrow(mydata)
+train.id = sample(1:n, round(n*0.75,0))
+train.data = mydata[train.id,-15]
+test.data = mydata[-train.id,-15]
 ```
+
+### Prediction and comparison functions
+
+```{r}
+
+get_prediiction <- function(therapy, mtry, nodesize){
+  model.data = train.data[train.data[,"THERAPY"] == therapy,]
+  rforest = randomForest(model.data$Health ~ .-THERAPY , data=model.data, mtry=mtry, nodesize=nodesize)
+  return (predict(rforest, test.data[,-2]))
+}
+
+get_treatment <- function(test_sample, mtry, nodesize){
+  pred.0 = get_prediiction(0, mtry, nodesize)
+  pred.1 = get_prediiction(1, mtry, nodesize)
+  return (ifelse(pred.0>pred.1, 0, 1))
+}
+
+get_accuracy <- function(prediction, truth) {
+  sum(prediction == truth)/(n-length(train.id))
+}
+```
+
+### Iteration loop
+
+```{r}
+reps = 100
+mtries = c(2,5,14)
+nodesizes = c(1,10,100)
+accuracies.ave = matrix(rep(0, length(mtries)*length(nodesizes)),ncol=length(mtries))
+for (i in 1:reps){
+  accuracies = matrix(rep(0, length(mtries)*length(nodesizes)),ncol=length(mtries))
+  for (j in 1:length(mtries)){
+    for (k in 1:length(nodesizes)){
+      prediction = get_treatment(mydata[-train.id,], mtry=mtries[j], nodesize=nodesizes[k])
+      accuracies[k,j] = get_accuracy(prediction, mydata[-train.id, "BEST"])
+    }
+  }
+  accuracies.ave = accuracies.ave + accuracies
+}
+accuracies.ave = accuracies.ave/reps
+```
+
+This leads to the following results with rows representing different `nodesize` and the coloumns different `mtry` values.
+```{r echo=FALSE}
+require(knitr)
+report = data.frame(accuracies.ave, row.names = nodesizes)
+colnames(report) = mtries
+kable(report, caption="Model performance for combinations of mtry and nodesize", format.args=list(justify='centre'))
+```
+
+### Intuition
+
+Normally when one has highly correlated data, it helps to reduce the number of predictors (`mtry`) available for selection at each split.  When all predictors are used (14 in this case) this process is similar to simple bagging.  The result of the above analysis would suggest that the predictors are largely uncorrelated since the accuracy improves as we allow more predictors into the selection at each split, up to all 14.
+
+The parameter `nodesize` determins the minimum size of nodes, in other words it determines the depth of each tree.  For small values we can expect very deep trees.  In this example I vary this from a minimum of 1 (largest possible tree) to 100.
 
 ## Question 2 [30 Points] Second Step in Virtual Twins
 

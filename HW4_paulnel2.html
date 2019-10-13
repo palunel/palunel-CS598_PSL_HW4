@@ -1654,6 +1654,88 @@ background-color: #e6ffe6;
 </style>
 <div id="question-1-70-points-tuning-random-forests-in-virtual-twins" class="section level2">
 <h2>Question 1 [70 Points] Tuning Random Forests in Virtual Twins</h2>
+<div id="set-up-of-data-sets" class="section level3">
+<h3>Set up of data sets</h3>
+<pre class="r"><code>set.seed(101)
+require(randomForest)
+mydata = read.csv(&#39;Sepsis.csv&#39;)
+n = nrow(mydata)
+train.id = sample(1:n, round(n*0.75,0))
+train.data = mydata[train.id,-15]
+test.data = mydata[-train.id,-15]</code></pre>
+</div>
+<div id="prediction-and-comparison-functions" class="section level3">
+<h3>Prediction and comparison functions</h3>
+<pre class="r"><code>get_prediiction &lt;- function(therapy, mtry, nodesize){
+  model.data = train.data[train.data[,&quot;THERAPY&quot;] == therapy,]
+  rforest = randomForest(model.data$Health ~ .-THERAPY , data=model.data, mtry=mtry, nodesize=nodesize)
+  return (predict(rforest, test.data[,-2]))
+}
+
+get_treatment &lt;- function(test_sample, mtry, nodesize){
+  pred.0 = get_prediiction(0, mtry, nodesize)
+  pred.1 = get_prediiction(1, mtry, nodesize)
+  return (ifelse(pred.0&gt;pred.1, 0, 1))
+}
+
+get_accuracy &lt;- function(prediction, truth) {
+  sum(prediction == truth)/(n-length(train.id))
+}</code></pre>
+</div>
+<div id="iteration-loop" class="section level3">
+<h3>Iteration loop</h3>
+<pre class="r"><code>reps = 100
+mtries = c(2,5,14)
+nodesizes = c(1,5,20)
+accuracies.ave = matrix(rep(0, length(mtries)*length(nodesizes)),ncol=length(mtries))
+for (i in 1:reps){
+  accuracies = matrix(rep(0, length(mtries)*length(nodesizes)),ncol=length(mtries))
+  for (j in 1:length(mtries)){
+    for (k in 1:length(nodesizes)){
+      prediction = get_treatment(mydata[-train.id,], mtry=mtries[j], nodesize=nodesizes[k])
+      accuracies[k,j] = get_accuracy(prediction, mydata[-train.id, &quot;BEST&quot;])
+    }
+  }
+  accuracies.ave = accuracies.ave + accuracies
+}
+accuracies.ave = accuracies.ave/reps</code></pre>
+<p>This leads to the following results with rows representing different <code>nodesize</code> and the coloumns different <code>mtry</code> values.</p>
+<table>
+<caption>Model performance for combinations of mtry and nodesize</caption>
+<thead>
+<tr class="header">
+<th></th>
+<th align="right">2</th>
+<th align="right">5</th>
+<th align="right">14</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td align="right">0.6766102</td>
+<td align="right">0.7053390</td>
+<td align="right">0.7247458</td>
+</tr>
+<tr class="even">
+<td>5</td>
+<td align="right">0.6820339</td>
+<td align="right">0.7045763</td>
+<td align="right">0.7265254</td>
+</tr>
+<tr class="odd">
+<td>20</td>
+<td align="right">0.6851695</td>
+<td align="right">0.7070339</td>
+<td align="right">0.7286441</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="intuition" class="section level3">
+<h3>Intuition</h3>
+<p>Normally when one has highly correlated data, it helps to reduce the number of predictors (<code>mtry</code>) available for selection at each split. When all predictors are used (14 in this case) this process is similar to simple bagging. The result of the above analysis would suggest that the predictors are largely uncorrelated since the accuracy improves as we allow more predictors into the selection at each split, up to all 14.</p>
+</div>
 </div>
 <div id="question-2-30-points-second-step-in-virtual-twins" class="section level2">
 <h2>Question 2 [30 Points] Second Step in Virtual Twins</h2>
