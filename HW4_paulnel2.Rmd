@@ -3,14 +3,17 @@ title: 'STAT 542 / CS 598: Homework 4'
 author: "Fall 2019, by Paul Nel (paulnel2)"
 date: 'Due: Monday, Oct 14 by 11:59 PM Pacific Time'
 output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  word_document:
+    toc: yes
+    toc_depth: '2'
   html_document:
     df_print: paged
     toc: yes
     toc_depth: '2'
-  pdf_document:
-    toc: yes
-    toc_depth: 2
-editor_options: 
+editor_options:
   chunk_output_type: console
 ---
 
@@ -20,7 +23,7 @@ editor_options:
   knitr::opts_chunk$set(echo = TRUE)
   knitr::opts_chunk$set(message = FALSE)
   knitr::opts_chunk$set(warning = FALSE)
-  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '60%', fig.align = "center")
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
   options(width = 90)
 ```
 
@@ -50,61 +53,94 @@ test.data = mydata[-train.id,-15]
 
 ```{r}
 
-get_prediiction <- function(therapy, mtry, nodesize){
+get_prediction <- function(therapy, mtry, nodesize){
   model.data = train.data[train.data[,"THERAPY"] == therapy,]
   rforest = randomForest(model.data$Health ~ .-THERAPY , data=model.data, mtry=mtry, nodesize=nodesize)
   return (predict(rforest, test.data[,-2]))
 }
 
-get_treatment <- function(test_sample, mtry, nodesize){
-  pred.0 = get_prediiction(0, mtry, nodesize)
-  pred.1 = get_prediiction(1, mtry, nodesize)
-  return (ifelse(pred.0>pred.1, 0, 1))
+get_treatment <- function(mtry, nodesize){
+  pred.0 = get_prediction(0, mtry, nodesize)
+  pred.1 = get_prediction(1, mtry, nodesize)
+  return (pred.1>pred.0)
 }
 
 get_accuracy <- function(prediction, truth) {
-  sum(prediction == truth)/(n-length(train.id))
+  mean(prediction == truth)
 }
 ```
 
 ### Iteration loop
 
 ```{r}
-reps = 100
-mtries = c(2,5,14)
-nodesizes = c(1,10,100)
-accuracies.ave = matrix(rep(0, length(mtries)*length(nodesizes)),ncol=length(mtries))
+reps = 5
+mtries = c(2,5,12)
+nodesizes = c(1,20,100)
+zeros = rep(0, length(mtries)*length(nodesizes)*reps)
+accuracies.tot =array(zeros, dim=c(reps,length(mtries),length(nodesizes)))
 for (i in 1:reps){
   accuracies = matrix(rep(0, length(mtries)*length(nodesizes)),ncol=length(mtries))
   for (j in 1:length(mtries)){
     for (k in 1:length(nodesizes)){
-      prediction = get_treatment(mydata[-train.id,], mtry=mtries[j], nodesize=nodesizes[k])
-      accuracies[k,j] = get_accuracy(prediction, mydata[-train.id, "BEST"])
+      prediction = get_treatment(mtry=mtries[j], nodesize=nodesizes[k])
+      accuracies.tot[i,k,j] = get_accuracy(prediction, mydata[-train.id, "BEST"])
     }
   }
-  accuracies.ave = accuracies.ave + accuracies
 }
-accuracies.ave = accuracies.ave/reps
 ```
 
 This leads to the following results with rows representing different `nodesize` and the coloumns different `mtry` values.
 ```{r echo=FALSE}
 require(knitr)
-report = data.frame(accuracies.ave, row.names = nodesizes)
+report = data.frame(apply(accuracies.tot, c(2,3), mean), row.names = nodesizes)
 colnames(report) = mtries
 kable(report, caption="Model performance for combinations of mtry and nodesize", format.args=list(justify='centre'))
+par(mfrow=c(1,3))
+for (i in 1:length(mtries)){
+    boxplot(accuracies.tot[,i,], col = c("lightskyblue3", "gray78", "gold1"),xaxt='n', xlab='mtry', main=paste("nodesize:", nodesizes[i]))
+    axis(side=1,at=seq(1:3),labels=mtries)
+}
 ```
 
 ### Intuition
 
-Normally when one has highly correlated data, it helps to reduce the number of predictors (`mtry`) available for selection at each split.  When all predictors are used (14 in this case) this process is similar to simple bagging.  The result of the above analysis would suggest that the predictors are largely uncorrelated since the accuracy improves as we allow more predictors into the selection at each split, up to all 14.
+Normally when one has highly correlated data, it helps to reduce the number of predictors (`mtry`) available for selection at each split.  When all predictors are used (12 in this case if we ignore `THERAPY`) this process is similar to simple bagging.  The result of the above analysis would suggest that the predictors are largely uncorrelated since the accuracy improves as we allow more predictors into the selection at each split, up to 12.
 
-The parameter `nodesize` determins the minimum size of nodes, in other words it determines the depth of each tree.  For small values we can expect very deep trees.  In this example I vary this from a minimum of 1 (largest possible tree) to 100.
+The parameter `nodesize` determines the minimum size of nodes, in other words it determines the depth of each tree.  For small values we can expect very deep trees.  In this example I vary this from a minimum of `` `r min(nodesizes)` `` (largest possible tree) to `` `r max(nodesizes)` ``.  This parameter has a significant impact for larger values of `mtry` suggesting that smaller trees results in better performance on the test set.
+
+The paramters chosen will be `mtry = 12` and `nodesize = 100` 
 
 ## Question 2 [30 Points] Second Step in Virtual Twins
 
-The second step in a virtual twins model is to use a single tree model (CART) to describe the choice of the best treatment. Perform the following:
-* Based on your optimal tuning parameter, fit the Virtual Twins model described in Question 1. Again, you should not use the `BEST` variable. 
-* For each subject, obtain the predicted best treatment of the training data itself
-* Treating the label of best treatment as the outcome, and fit a single tree model to predict it. Be careful which variables should be removed from this model fitting.
-* Consider tuning the tree model using the cost-complexity tuning.
+Generate predictions on all data based on the best parameters from Question 1.
+
+```{r}
+all_data = mydata[,-15]
+
+get_all_prediction <- function(therapy, mtry, nodesize){
+  model.data = all_data[all_data[,"THERAPY"] == therapy,]
+  rforest = randomForest(model.data$Health ~ .-THERAPY , data=model.data, mtry=mtry, nodesize=nodesize)
+  return (predict(rforest, all_data[,-2]))
+}
+
+get_all_treatment <- function(mtry, nodesize){
+  pred.0 = get_all_prediction(0, mtry, nodesize)
+  pred.1 = get_all_prediction(1, mtry, nodesize)
+  return (ifelse(pred.1>pred.0, 1,0))
+}
+
+all_data['PRED'] = get_all_treatment(mtry=12, nodesize=100)
+
+```
+
+Build a single regression tree using the predicted values `all_data['PRED]` as the proposed treatment.
+
+```{r}
+require(rpart)
+require(rpart.plot)
+train.all_data = all_data[,-c(2,3)]
+rtree = rpart(train.all_data$PRED~., data=train.all_data)
+par(mfrow=c(1,1))
+rpart.plot(rtree)
+
+```
