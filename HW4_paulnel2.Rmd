@@ -130,10 +130,9 @@ rforest.1 = randomForest(model.data.1$Health ~ ., data=model.data.1, mtry=11, no
 pred.0 = predict(rforest.0, all_data)
 pred.1 = predict(rforest.1, all_data)
 all_data['PRED'] = choose_treatment(pred.1, pred.0)
-#mean(all_data$PRED==mydata$BEST)
 ```
 
-Build a single regression tree using the predicted values `all_data['PRED]` as the proposed treatment.
+Build a single regression tree using the predicted values `all_data['PRED']` as the proposed treatment.
 
 ```{r}
 par(mfrow=c(1,2))
@@ -145,6 +144,7 @@ par(mfrow=c(1,1))
 rpart.plot(rtree)
 plotcp(rtree)
 ```
+
 This gives us a tree with the following CP values:
 
 ```{r echo=FALSE}
@@ -152,11 +152,14 @@ printcp(rtree)
 ```
 
 To prune the tree, we find the amount of splits that minimise the cross validation error `xerror` as follows:
+
 ```{r}
 opt = which.min(rtree$cptable[, "xerror"])
 rtree$cptable[opt, 4]
 ```
+
 Now find the upper limit based on 1 standard deviation and list all splits that have `xerror` less than this.
+
 ```{r}
 upper_1se = rtree$cptable[opt, 4] + rtree$cptable[opt, 5]
 ```
@@ -168,12 +171,14 @@ giving us `` `r tmp.id ` ``.
 
 
 Compute an average `CP` value between the two splits with the lowest resulting `xerror` of `` `r round(upper_1se, 3)` `` which should fall between rows `` `r min(tmp.id[1])-1` `` and `` `r min(tmp.id[1])` ``:
+
 ```{r}
 CP.1se = 0.5*(rtree$cptable[min(tmp.id[1]),1] + rtree$cptable[min(tmp.id[1])-1,1])
 final.rtree = prune(rtree, cp=CP.1se)
 ```
 
 which gives the following tree based on this $CP_{1se}$ of `` `r round(CP.1se,3)` ``.
+
 ```{r}
 par(mfrow=c(1,1))
 rpart.plot(final.rtree)
@@ -181,4 +186,4 @@ pred.tree = ifelse(predict(final.rtree, all_data)>0.5,1,0)
 accuracy = mean(pred.tree==mydata[,"BEST"])
 ```
 
-This tree gives us an accuracy of `` `r round(accuracy, 3) ` `` which is comparable to that achieved in Question 1.
+This tree gives us an accuracy of `` `r round(accuracy, 4) ` `` which is comparable to that achieved in Question 1.
